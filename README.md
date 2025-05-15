@@ -1,1 +1,1 @@
-# Vizualizacija-Podataka---Projekt
+# Vizualizacija Podataka - Projekt
