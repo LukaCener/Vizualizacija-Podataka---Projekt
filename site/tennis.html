@@ -1,0 +1,2144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualization of tennis tournament results</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        .header {
+            background-color: #f7f7f7;
+            color: black;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            height: 37px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+        .country {
+            fill: #EBE5C2;
+            stroke: #504B38;
+            stroke-width: 0.5px;
+            cursor: pointer;
+        }
+        .country:hover {
+            fill: #d5cf9e;
+        }
+        #main-wrapper {
+            display: flex;
+            height: calc(100vh - 77px);
+            background-color: #C2DFFF;
+            overflow: hidden;
+        }
+        #timeline-container {
+            width: 20%;
+            height: 100%;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: left;
+        }
+        #map-container {
+            flex: 1;
+            height: 100%;
+            max-width: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .year-label {
+            cursor: pointer;
+            text-anchor: end;
+        }
+        .year-label.active {
+            font-weight: bold;
+            text-decoration: underline;
+        }
+        .timeline-circle {
+            cursor: pointer;
+        }
+        .tournament-marker {
+            stroke: #504B38;
+            stroke-width: 0.5px;
+            cursor: pointer;
+        }
+        .tournament-marker-text {
+            fill: white;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        #info {
+            width: 30%;
+            height: 90%;
+            background-color: #f7f7f7;
+            border-radius: 20px;
+            margin: 20px;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow: hidden;
+            position: relative;
+        }
+        .year-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(-20px);
+            animation: fadeInDown 0.5s forwards;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: calc(100% - 60px);
+            overflow: hidden;
+        }
+        .chart-section {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.5s ease-in-out;
+        }
+        .chart-section.active {
+            transform: translateY(0);
+        }
+        .chart-section.above {
+            transform: translateY(-100%);
+        }
+        .chart-section.below {
+            transform: translateY(100%);
+        }
+        .chart-section.below2 {
+            transform: translateY(200%);
+        }
+        .chart-section.below3 {
+            transform: translateY(300%);
+        }
+        .chart-button {
+            position: absolute;
+            right: 10px;
+            background-color: #228B22;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out, background-color 0.3s;
+            z-index: 10;
+        }
+        .chart-button:hover {
+            background-color: #165B16;
+        }
+        .chart-button.down {
+            bottom: 0px;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .chart-button.up {
+            top: 0px;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .chart-button.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(20px);
+        }
+        .chart-button i {
+            border: solid white;
+            border-width: 0 3px 3px 0;
+            display: inline-block;
+            padding: 3px;
+            transition: transform 0.3s;
+        }
+        .chart-button.down i {
+            transform: rotate(45deg);
+        }
+        .chart-button.up i {
+            transform: rotate(-135deg);
+        }
+        .pie-chart-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100%;
+            opacity: 0;
+            transform: scale(0.9);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+        }
+        .pie-chart-container.visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .pie-chart-container.instant {
+            transition: none;
+        }
+        .pie-legend {
+            position: absolute;
+            right: 10px;
+            bottom: 40px;
+            font-size: 12px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 8px;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .pie-legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .pie-legend-color {
+            width: 10px;
+            height: 10px;
+            margin-right: 6px;
+            border-radius: 2px;
+        }
+        .chart-title {
+            position: relative;
+            width: 100%;
+            text-align: center;
+            font-size: 17px;
+            font-weight: bold;
+            margin-bottom: 30px;
+            margin-top: 40px;
+        }
+        .bar-chart {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeInUp 0.8s forwards;
+            animation-delay: 0.3s;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        .bar-chart svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .bar-container {
+            transition: all 0.3s ease;
+        }
+        .bar-container:hover .bar {
+            filter: brightness(0.8);
+        }
+        .bar {
+            transition: all 0.3s ease;
+        }
+        .points-tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 5px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        @keyframes fadeInDown {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+            max-width: 200px;
+            white-space: normal;
+            text-align: center;
+        }
+        .tournament-section {
+            transform: translateY(0);
+        }
+        .tournament-section.above {
+            transform: translateY(-100%);
+        }
+        .tournament-section.below {
+            transform: translateY(100%);
+        }
+        .tournament-info-container {
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Visualization of tennis tournament results</h1>
+    </div>
+    <div id="main-wrapper">
+        <div id="timeline-container"></div>
+        <div id="map-container"></div>
+        <div id="info"></div>
+    </div>
+
+    <script>
+        // Set up dimensions
+        const width = 1200;
+        const height = 850;
+
+        // Create SVG
+        const svg = d3.select("#map-container")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style", "max-width: 100%; height: auto;");
+
+        // Create a container group for the map that will be transformed
+        const g = svg.append("g");
+
+        // Create projection
+        const projection = d3.geoMercator()
+            .scale(190)
+            .center([0, 42])
+            .translate([width / 2, height / 2]);
+
+        // Create path generator
+        const path = d3.geoPath().projection(projection);
+
+        // Initialize currentTransform
+        let currentTransform = d3.zoomIdentity;
+
+        // Create tooltip div
+        const tooltip = d3.select("body").append("div")
+            .attr("class", "points-tooltip");
+
+        // Function to update info section with year-end rankings
+        function updateInfoSection(year) {
+            const infoDiv = d3.select("#info");
+            
+            // Clear previous content
+            infoDiv.html("");
+            
+            // Add year title
+            infoDiv.append("div")
+                .attr("class", "year-title")
+                .text(year);
+
+            // Create chart container
+            const chartContainer = infoDiv.append("div")
+                .attr("class", "chart-container");
+
+            // Create sections for all charts
+            const barChartSection = chartContainer.append("div")
+                .attr("class", "chart-section active")
+                .attr("id", "bar-chart-section");
+
+            const pieChartSection = chartContainer.append("div")
+                .attr("class", "chart-section below")
+                .attr("id", "pie-chart-section");
+
+            const countryBarSection = chartContainer.append("div")
+                .attr("class", "chart-section below2")
+                .attr("id", "country-bar-section");
+
+            const donutSection = chartContainer.append("div")
+                .attr("class", "chart-section below3")
+                .attr("id", "donut-section");
+
+            // Add navigation buttons
+            const downButton = barChartSection.append("button")
+                .attr("class", "chart-button down")
+                .on("click", () => switchCharts("down"));
+            downButton.append("i");
+
+            const upButton = pieChartSection.append("button")
+                .attr("class", "chart-button up hidden")
+                .on("click", () => switchCharts("up"));
+            upButton.append("i");
+
+            const downButton2 = pieChartSection.append("button")
+                .attr("class", "chart-button down hidden")
+                .on("click", () => switchCharts("down"));
+            downButton2.append("i");
+
+            const upButton2 = countryBarSection.append("button")
+                .attr("class", "chart-button up hidden")
+                .on("click", () => switchCharts("up"));
+            upButton2.append("i");
+
+            const downButton3 = countryBarSection.append("button")
+                .attr("class", "chart-button down hidden")
+                .on("click", () => switchCharts("down"));
+            downButton3.append("i");
+
+            const upButton3 = donutSection.append("button")
+                .attr("class", "chart-button up hidden")
+                .on("click", () => switchCharts("up"));
+            upButton3.append("i");
+
+            // Create bar chart
+            createBarChart(barChartSection, year);
+            
+            // Create pie chart
+            createPieChart(pieChartSection, year);
+
+            // Create country bar chart
+            createCountryBarChart(countryBarSection, year);
+
+            // Create donut chart
+            createDonutChart(donutSection, year);
+        }
+
+        function switchCharts(direction) {
+            const barSection = d3.select("#bar-chart-section");
+            const pieSection = d3.select("#pie-chart-section");
+            const countryBarSection = d3.select("#country-bar-section");
+            const donutSection = d3.select("#donut-section");
+            
+            const pieChartContainer = pieSection.select(".pie-chart-container");
+            const downButton = barSection.select(".chart-button.down");
+            const upButton = pieSection.select(".chart-button.up");
+            const downButton2 = pieSection.select(".chart-button.down");
+            const upButton2 = countryBarSection.select(".chart-button.up");
+            const downButton3 = countryBarSection.select(".chart-button.down");
+            const upButton3 = donutSection.select(".chart-button.up");
+
+            // Hide all buttons initially
+            [downButton, upButton, downButton2, upButton2, downButton3, upButton3].forEach(btn => {
+                if (btn) btn.classed("hidden", true);
+            });
+
+            if (direction === "down") {
+                if (barSection.classed("active")) {
+                    // Moving from first to second section
+                    barSection.classed("active", false).classed("above", true);
+                    pieSection.classed("below", false).classed("active", true);
+                    countryBarSection.classed("below2", true);
+                    donutSection.classed("below3", true);
+                    
+                    upButton.classed("hidden", false);
+                    downButton2.classed("hidden", false);
+
+                    if (!pieSection.property("_hasBeenShown")) {
+                        setTimeout(() => {
+                            pieChartContainer.classed("visible", true);
+                            pieSection.property("_hasBeenShown", true);
+                        }, 300);
+                    } else {
+                        pieChartContainer.classed("instant", true).classed("visible", true);
+                        setTimeout(() => pieChartContainer.classed("instant", false), 50);
+                    }
+                } else if (pieSection.classed("active")) {
+                    // Moving from second to third section
+                    pieSection.classed("active", false).classed("above", true);
+                    countryBarSection.classed("below2", false).classed("active", true);
+                    donutSection.classed("below3", true);
+                    
+                    upButton2.classed("hidden", false);
+                    downButton3.classed("hidden", false);
+                } else if (countryBarSection.classed("active")) {
+                    // Moving from third to fourth section
+                    countryBarSection.classed("active", false).classed("above", true);
+                    donutSection.classed("below3", false).classed("active", true);
+                    
+                    upButton3.classed("hidden", false);
+                }
+            } else {
+                if (pieSection.classed("active")) {
+                    // Moving from second to first section
+                    barSection.classed("above", false).classed("active", true);
+                    pieSection.classed("active", false).classed("below", true);
+                    countryBarSection.classed("below2", true);
+                    donutSection.classed("below3", true);
+                    
+                    downButton.classed("hidden", false);
+                    pieChartContainer.classed("visible", false);
+                } else if (countryBarSection.classed("active")) {
+                    // Moving from third to second section
+                    pieSection.classed("above", false).classed("active", true);
+                    countryBarSection.classed("active", false).classed("below2", true);
+                    donutSection.classed("below3", true);
+                    
+                    upButton.classed("hidden", false);
+                    downButton2.classed("hidden", false);
+                } else if (donutSection.classed("active")) {
+                    // Moving from fourth to third section
+                    countryBarSection.classed("above", false).classed("active", true);
+                    donutSection.classed("active", false).classed("below3", true);
+                    
+                    upButton2.classed("hidden", false);
+                    downButton3.classed("hidden", false);
+                }
+            }
+        }
+
+        year_end_top10 = d3.csv("/data/year_end_top10.csv");
+        atp_tennis_fixed = d3.csv("/data/atp_tennis_fixed.csv");
+
+        function createBarChart(container, year) {
+            const margin = {top: 40, right: 150, bottom: 0, left: 45};
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right - 40;
+            const height = 400;
+            
+            const svg = container.append("div")
+                .attr("class", "bar-chart")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .attr("viewBox", `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
+                .attr("preserveAspectRatio", "xMidYMid meet");
+
+            const g = svg.append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Add chart title
+            svg.append("text")
+                .attr("x", (width + margin.left + margin.right) / 2)
+                .attr("y", 20)
+                .attr("text-anchor", "middle")
+                .attr("font-size", "17px")
+                .attr("font-weight", "bold")
+                .text("Year-End ATP Top 10 Rankings");
+            
+            // Load and process data
+            year_end_top10.then(data => {
+                // Filter data for selected year
+                const yearData = data.filter(d => +d.Year === year)
+                    .sort((a, b) => +a.YearEnd_Rank - +b.YearEnd_Rank);
+                
+                // Create scales
+                const xScale = d3.scaleLinear()
+                    .domain([0, 15000])
+                    .range([0, width]);
+                
+                const yScale = d3.scaleLinear()
+                    .domain([1, 10])
+                    .range([40, height - margin.top - margin.bottom]);
+                
+                // Add X axis with specific ticks
+                g.append("g")
+                    .attr("transform", `translate(0,20)`)
+                    .call(d3.axisTop(xScale)
+                        .tickValues([0, 5000, 10000, 15000])
+                        .tickFormat(d3.format("d"))
+                        .tickSize(5))
+                    .call(g => {
+                        g.select(".domain").remove();
+                        g.selectAll(".tick text")
+                            .attr("dy", "-0.25em")
+                            .attr("font-size", "14px");
+                    });
+                
+                // Add Y axis without domain line
+                g.append("g")
+                    .call(d3.axisLeft(yScale)
+                        .tickSize(0))
+                    .call(g => {
+                        g.select(".domain").remove();
+                        g.selectAll(".tick line").remove();
+                        g.selectAll(".tick text")
+                            .attr("font-size", "16px");
+                    });
+                
+                // Add bars and player names
+                const barGroups = g.selectAll(".bar-container")
+                    .data(yearData)
+                    .enter()
+                    .append("g")
+                    .attr("class", "bar-container")
+                    .attr("transform", d => `translate(0,${yScale(+d.YearEnd_Rank)})`);
+                
+                barGroups.append("rect")
+                    .attr("class", "bar")
+                    .attr("x", 0)
+                    .attr("y", -15)
+                    .attr("height", 30)
+                    .attr("width", 0)
+                    .attr("fill", "#228B22")
+                    .transition()
+                    .duration(1000)
+                    .ease(d3.easeElastic)
+                    .delay((d, i) => i * 100)
+                    .attr("width", d => xScale(+d.YearEnd_Points));
+                
+                barGroups.append("text")
+                    .attr("x", 0)
+                    .attr("y", 7)
+                    .text(d => d.Player)
+                    .attr("fill", "black")
+                    .attr("font-size", "14px")
+                    .attr("opacity", 0)
+                    .transition()
+                    .duration(1000)
+                    .delay((d, i) => i * 100 + 500)
+                    .attr("x", d => xScale(+d.YearEnd_Points) + 10)
+                    .attr("opacity", 1);
+                
+                // Add hover effects
+                barGroups
+                    .on("mouseover", function(event, d) {
+                        d3.select(this).select(".bar")
+                            .transition()
+                            .duration(200)
+                            .attr("fill", "#165B16");
+                        
+                        tooltip.style("opacity", 1)
+                            .html(`Points: ${d.YearEnd_Points}`)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 10) + "px");
+                    })
+                    .on("mousemove", function(event) {
+                        tooltip.style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 10) + "px");
+                    })
+                    .on("mouseout", function() {
+                        d3.select(this).select(".bar")
+                            .transition()
+                            .duration(200)
+                            .attr("fill", "#228B22");
+                        
+                        tooltip.style("opacity", 0);
+                    });
+            });
+        }
+
+        function createPieChart(container, year) {
+            const chartContainer = container.append("div")
+                .attr("class", "pie-chart-container");
+
+            // Add title
+            chartContainer.append("div")
+                .attr("class", "chart-title")
+                .text("Tournament Surface Distribution");
+
+            const margin = {top: 10, right: 40, bottom: 20, left: 40};
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right - 40;
+            const height = 250;
+            const radius = Math.min(width, height) / 2 * 0.85;
+
+            const svg = chartContainer.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height)
+                .append("g")
+                .attr("transform", `translate(${width/2 + margin.left},${height/2 - 10})`);
+
+            // Load and process data
+            atp_tennis_fixed.then(data => {
+                // Filter data for selected year and get unique tournaments
+                const yearData = data.filter(d => new Date(d.Date).getFullYear() === year);
+                const uniqueTournaments = Array.from(new Set(yearData.map(d => d.Tournament)))
+                    .map(tournament => {
+                        const tournamentData = yearData.find(d => d.Tournament === tournament);
+                        return {
+                            Tournament: tournament,
+                            Surface: tournamentData.Surface
+                        };
+                    });
+
+                // Count surfaces
+                const surfaceCounts = d3.rollup(
+                    uniqueTournaments,
+                    v => v.length,
+                    d => d.Surface
+                );
+
+                // Prepare data for pie chart
+                const pieData = Array.from(surfaceCounts, ([key, value]) => ({
+                    surface: key,
+                    count: value
+                }));
+
+                // Color scale
+                const colors = {
+                    "Clay": "#FFA07A",
+                    "Grass": "#90EE90",
+                    "Hard": "#87CEEB",
+                    "Carpet": "#A0522D"
+                };
+
+                // Create pie generator
+                const pie = d3.pie()
+                    .value(d => d.count);
+
+                // Create arc generators
+                const arc = d3.arc()
+                    .innerRadius(0)
+                    .outerRadius(radius);
+
+                const arcCollapsed = d3.arc()
+                    .innerRadius(0)
+                    .outerRadius(0);
+
+                // Add the pie slices (initially collapsed)
+                const slices = svg.selectAll("path")
+                    .data(pie(pieData))
+                    .enter()
+                    .append("path")
+                    .attr("d", arcCollapsed)
+                    .attr("fill", d => colors[d.data.surface])
+                    .attr("stroke", "white")
+                    .style("stroke-width", "2px")
+                    .style("opacity", 0)
+                    .attr("transform", "scale(1)");
+
+                // Add event handlers
+                slices.on("mouseover", function(event, d) {
+                    const percentage = (d.data.count / d3.sum(pieData, d => d.count) * 100).toFixed(1);
+                    tooltip.style("opacity", 1)
+                        .html(`${d.data.surface}<br>${percentage}%`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                    
+                    d3.select(this)
+                        .transition()
+                        .duration(300)
+                        .ease(d3.easeQuadOut)
+                        .style("opacity", 1)
+                        .attr("transform", "scale(1.10)")
+                        .raise();
+                })
+                .on("mousemove", function(event) {
+                    tooltip.style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", function() {
+                    tooltip.style("opacity", 0);
+                    
+                    d3.select(this)
+                        .transition()
+                        .duration(300)
+                        .ease(d3.easeQuadOut)
+                        .style("opacity", 0.8)
+                        .attr("transform", "scale(1)");
+                });
+
+                // Sort pieData by surface type
+                pieData.sort((a, b) => {
+                    const order = ["Hard", "Clay", "Grass", "Carpet"];
+                    return order.indexOf(a.surface) - order.indexOf(b.surface);
+                });
+
+                // Add legend (initially hidden)
+                const legend = chartContainer.append("div")
+                    .attr("class", "pie-legend")
+                    .style("bottom", "60px");
+
+                const legendItems = legend.selectAll(".pie-legend-item")
+                    .data(pieData)
+                    .enter()
+                    .append("div")
+                    .attr("class", "pie-legend-item")
+                    .style("opacity", 0);
+
+                legendItems.append("div")
+                    .attr("class", "pie-legend-color")
+                    .style("background-color", d => colors[d.surface]);
+
+                legendItems.append("span")
+                    .text(d => `${d.surface}: ${d.count}`);
+
+                // Add total (initially hidden)
+                const totalItem = legend.append("div")
+                    .attr("class", "pie-legend-item")
+                    .style("margin-top", "8px")
+                    .style("font-weight", "bold")
+                    .style("font-size", "11px")
+                    .style("opacity", 0)
+                    .text(`Total: ${d3.sum(pieData, d => d.count)} tournaments`);
+
+                // Start animations when the section becomes active
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            // Animate pie slices
+                            slices.transition()
+                                .duration(1000)
+                                .delay((d, i) => i * 100)
+                                .ease(d3.easeBack)
+                                .style("opacity", 0.8)
+                                .attrTween("d", function(d) {
+                                    const interpolate = d3.interpolate(
+                                        { startAngle: d.startAngle, endAngle: d.startAngle },
+                                        { startAngle: d.startAngle, endAngle: d.endAngle }
+                                    );
+                                    return function(t) {
+                                        return arc(interpolate(t));
+                                    };
+                                });
+
+                            // Animate legend items
+                            legendItems.transition()
+                                .duration(500)
+                                .delay((d, i) => 1000 + i * 100)
+                                .style("opacity", 1);
+
+                            // Animate total
+                            totalItem.transition()
+                                .duration(500)
+                                .delay(1000 + pieData.length * 100)
+                                .style("opacity", 1);
+
+                            observer.disconnect(); // Stop observing once animation starts
+                        }
+                    });
+                }, { threshold: 0.5 });
+
+                observer.observe(container.node());
+            });
+        }
+
+        function createCountryBarChart(container, year) {
+            const chartContainer = container.append("div")
+                .attr("class", "chart-container");
+
+            // Add title
+            chartContainer.append("div")
+                .attr("class", "chart-title")
+                .text("Top 10 Countries by Number of Tournaments");
+
+            const margin = {top: 20, right: 30, bottom: 150, left: 60};
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right - 40;
+            const height = 400;
+
+            const svg = chartContainer.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Load and process data
+            atp_tennis_fixed.then(data => {
+                // Filter data for selected year and get unique tournaments per country
+                const yearData = data.filter(d => new Date(d.Date).getFullYear() === year);
+                const countryTournaments = d3.rollup(
+                    yearData,
+                    v => new Set(v.map(d => d.Tournament)).size, // Count unique tournaments
+                    d => d.Country
+                );
+
+                // Convert to array and sort by tournament count
+                const sortedData = Array.from(countryTournaments, ([country, count]) => ({country, count}))
+                    .sort((a, b) => b.count - a.count)
+                    .slice(0, 10); // Take top 10
+
+                // Create scales
+                const xScale = d3.scaleBand()
+                    .domain(sortedData.map(d => d.country))
+                    .range([0, width])
+                    .padding(0.3);
+
+                const yScale = d3.scaleLinear()
+                    .domain([0, Math.ceil(d3.max(sortedData, d => d.count) / 2) * 2])
+                    .range([height - margin.top - margin.bottom, 0]);
+
+                // Add X axis without labels or ticks
+                svg.append("g")
+                    .attr("transform", `translate(0,${height - margin.top - margin.bottom})`)
+                    .call(d3.axisBottom(xScale).tickSize(0).tickValues([])) // Remove all ticks and labels
+                    .call(g => g.select(".domain").attr("stroke-opacity", 0.2));
+
+                // Add country labels separately
+                svg.append("g")
+                    .selectAll("text")
+                    .data(sortedData)
+                    .enter()
+                    .append("text")
+                    .text(d => d.country)
+                    .attr("x", d => xScale(d.country) + xScale.bandwidth() / 2)
+                    .attr("y", height - margin.top - margin.bottom + 20)  // Adjusted position
+                    .attr("transform", d => `rotate(45, ${xScale(d.country) + xScale.bandwidth() / 2}, ${height - margin.top - margin.bottom + 20})`)
+                    .style("text-anchor", "start")
+                    .style("font-size", "12px");
+
+                // Add Y axis with ticks every 2 units
+                svg.append("g")
+                    .call(d3.axisLeft(yScale)
+                        .ticks(Math.ceil(d3.max(sortedData, d => d.count) / 2))
+                        .tickFormat(d3.format("d")))
+                    .call(g => g.select(".domain").attr("stroke-opacity", 0.2));  // Lighter domain line
+
+                // Add Y axis label
+                svg.append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 0 - margin.left)
+                    .attr("x", 0 - (height - margin.top - margin.bottom) / 2)
+                    .attr("dy", "1em")
+                    .style("text-anchor", "middle")
+                    .text("Number of Tournaments");
+
+                // Create tooltip
+                const tooltip = d3.select("body").append("div")
+                    .attr("class", "tooltip")
+                    .style("opacity", 0)
+                    .style("position", "absolute")
+                    .style("background-color", "rgba(0, 0, 0, 0.8)")
+                    .style("color", "white")
+                    .style("padding", "8px")
+                    .style("border-radius", "4px")
+                    .style("font-size", "12px")
+                    .style("pointer-events", "none");
+
+                // Add bars with entrance animation
+                const bars = svg.selectAll("rect")
+                    .data(sortedData)
+                    .enter()
+                    .append("rect")
+                    .attr("x", d => xScale(d.country))
+                    .attr("y", height - margin.top - margin.bottom)
+                    .attr("width", xScale.bandwidth())
+                    .attr("height", 0)
+                    .attr("fill", "#228B22")
+                    .attr("opacity", 0);
+
+                // Add event handlers
+                bars.on("mouseover", function(event, d) {
+                    d3.select(this)
+                        .transition()
+                        .duration(200)
+                        .attr("fill", "#165B16");
+
+                    tooltip.transition()
+                        .duration(200)
+                        .style("opacity", 1);
+                    tooltip.html(`${d.count} tournaments`)  // Removed country name from tooltip
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mousemove", function(event) {
+                    tooltip.style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this)
+                        .transition()
+                        .duration(200)
+                        .attr("fill", "#228B22");
+
+                    tooltip.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                });
+
+                // Start animation when the section becomes active
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            bars.transition()
+                                .duration(1000)
+                                .delay((d, i) => i * 100)
+                                .ease(d3.easeElastic)
+                                .attr("y", d => yScale(d.count))
+                                .attr("height", d => height - margin.top - margin.bottom - yScale(d.count))
+                                .attr("opacity", 1);
+                            
+                            observer.disconnect(); // Stop observing once animation starts
+                        }
+                    });
+                }, { threshold: 0.5 });
+
+                observer.observe(container.node());
+            });
+        }
+
+        function createDonutChart(container, year) {
+            const chartContainer = container.append("div")
+                .attr("class", "chart-container");
+
+            // Add title
+            chartContainer.append("div")
+                .attr("class", "chart-title")
+                .text("Tournament Series Distribution");
+
+            const margin = {top: 0, right: 20, bottom: 60, left: 20};  // Reduced top margin, increased bottom
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right - 40;
+            const height = 300;
+            const radius = Math.min(width, height) / 2 * 0.8;
+
+            const svg = chartContainer.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${width/2 + margin.left},${height/2 - 20})`);
+
+            // Load and process data
+            atp_tennis_fixed.then(data => {
+                // Filter data for selected year and get unique tournaments
+                const yearData = data.filter(d => new Date(d.Date).getFullYear() === year);
+                const uniqueTournaments = Array.from(new Set(yearData.map(d => d.Tournament)))
+                    .map(tournament => {
+                        const tournamentData = yearData.find(d => d.Tournament === tournament);
+                        return {
+                            Tournament: tournament,
+                            Series: tournamentData.Series
+                        };
+                    });
+
+                // Count series
+                const seriesCounts = d3.rollup(
+                    uniqueTournaments,
+                    v => v.length,
+                    d => d.Series
+                );
+
+                // Prepare data for donut chart
+                const pieData = Array.from(seriesCounts, ([key, value]) => ({
+                    series: key,
+                    count: value
+                }));
+
+                // Define custom order for series
+                const seriesOrder = [
+                    "ATP Tour 250",
+                    "ATP Tour 500",
+                    "ATP Masters 1000",
+                    "ATP Finals",
+                    "Grand Slam"
+                ];
+
+                // Sort data according to custom order
+                pieData.sort((a, b) => 
+                    seriesOrder.indexOf(a.series) - seriesOrder.indexOf(b.series)
+                );
+
+                // Color scale
+                const colors = {
+                    "Grand Slam": "#FFD700",
+                    "ATP Finals": "#C0C0C0",
+                    "ATP Masters 1000": "#00008B",
+                    "ATP Tour 500": "#006400",
+                    "ATP Tour 250": "#FC3D3D"
+                };
+
+                // Create arc generator with start and end angles for animation
+                const arc = d3.arc()
+                    .innerRadius(radius * 0.6)
+                    .outerRadius(radius);
+
+                // Create arc generator for animation starting point (collapsed)
+                const arcCollapsed = d3.arc()
+                    .innerRadius(radius * 0.6)
+                    .outerRadius(radius * 0.6); // Same as inner radius to start collapsed
+
+                // Create pie generator
+                const pie = d3.pie()
+                    .value(d => d.count);
+
+                // Add the donut slices
+                const slices = svg.selectAll("path")
+                    .data(pie(pieData))
+                    .enter()
+                    .append("path")
+                    .attr("d", arcCollapsed)
+                    .attr("fill", d => colors[d.data.series])
+                    .attr("stroke", "white")
+                    .style("stroke-width", "2px")
+                    .style("opacity", 0);
+
+                // Add event handlers
+                slices.on("mouseover", function(event, d) {
+                    const percentage = (d.data.count / d3.sum(pieData, d => d.count) * 100).toFixed(1);
+                    tooltip.style("opacity", 1)
+                        .html(`${d.data.series}<br>${percentage}%`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                    
+                    d3.select(this)
+                        .transition()
+                        .duration(300)
+                        .ease(d3.easeQuadOut)
+                        .style("opacity", 1)
+                        .attr("transform", "scale(1.08)");
+                })
+                .on("mousemove", function(event) {
+                    tooltip.style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", function() {
+                    tooltip.style("opacity", 0);
+                    
+                    d3.select(this)
+                        .transition()
+                        .duration(300)
+                        .ease(d3.easeQuadOut)
+                        .style("opacity", 0.8)
+                        .attr("transform", "scale(1)");
+                });
+
+                // Add legend items (initially hidden)
+                const legend = chartContainer.append("div")
+                    .attr("class", "pie-legend")
+                    .style("bottom", "0px");  // Adjusted bottom position
+
+                const legendItems = legend.selectAll(".pie-legend-item")
+                    .data(pieData)
+                    .enter()
+                    .append("div")
+                    .attr("class", "pie-legend-item")
+                    .style("opacity", 0);
+
+                legendItems.append("div")
+                    .attr("class", "pie-legend-color")
+                    .style("background-color", d => colors[d.series]);
+
+                legendItems.append("span")
+                    .text(d => `${d.series}: ${d.count}`);
+
+                // Add total (initially hidden)
+                const totalItem = legend.append("div")
+                    .attr("class", "pie-legend-item")
+                    .style("margin-top", "8px")
+                    .style("font-weight", "bold")
+                    .style("font-size", "11px")
+                    .style("opacity", 0)
+                    .text(`Total: ${d3.sum(pieData, d => d.count)} tournaments`);
+
+                // Start animations when the section becomes active
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            // Animate slices
+                            slices.transition()
+                                .duration(1000)
+                                .delay((d, i) => i * 100)
+                                .ease(d3.easeBack)
+                                .style("opacity", 0.8)
+                                .attrTween("d", function(d) {
+                                    const interpolate = d3.interpolate(
+                                        { startAngle: d.startAngle, endAngle: d.startAngle },
+                                        { startAngle: d.startAngle, endAngle: d.endAngle }
+                                    );
+                                    return function(t) {
+                                        return arc(interpolate(t));
+                                    };
+                                });
+
+                            // Animate legend items
+                            legendItems.transition()
+                                .duration(500)
+                                .delay((d, i) => 1000 + i * 100)
+                                .style("opacity", 1);
+
+                            // Animate total
+                            totalItem.transition()
+                                .duration(500)
+                                .delay(1000 + pieData.length * 100)
+                                .style("opacity", 1);
+
+                            observer.disconnect(); // Stop observing once animation starts
+                        }
+                    });
+                }, { threshold: 0.5 });
+
+                observer.observe(container.node());
+            });
+        }
+
+        // Set up zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([1, 10])
+            .translateExtent([[0, 0], [width, height]])
+            .on("zoom", zoomed);
+
+        // Add zoom behavior to SVG
+        svg.call(zoom);
+
+        // Zoom function with smooth transition
+        function zoomed(event) {
+            currentTransform = event.transform;
+            
+            // Apply transform to the main group with transition for wheel events
+            if (event.sourceEvent?.type === 'wheel') {
+            g.transition()
+                    .duration(500)
+                    .ease(d3.easeQuadInOut)
+                .attr("transform", event.transform);
+
+                // Update marker sizes with transition
+                const clampedK = Math.max(1/3, Math.min(8, event.transform.k));
+            g.selectAll("circle.tournament-marker")
+                .transition()
+                .duration(500)
+                .ease(d3.easeQuadInOut)
+                .attr("r", 10 / clampedK);
+            g.selectAll("text.tournament-marker-text")
+                .transition()
+                .duration(500)
+                .ease(d3.easeQuadInOut)
+                .attr("font-size", 14 / clampedK);
+            } else {
+                // For non-wheel events (dragging), update immediately
+                g.attr("transform", event.transform);
+                
+                const clampedK = Math.max(1/3, Math.min(8, event.transform.k));
+                g.selectAll("circle.tournament-marker")
+                    .attr("r", 10 / clampedK);
+                g.selectAll("text.tournament-marker-text")
+                    .attr("font-size", 14 / clampedK);
+            }
+        }
+
+        // Function to zoom to a specific country
+        function zoomToCountry(d, path) {
+            const bounds = path.bounds(d);
+            const dx = bounds[1][0] - bounds[0][0];
+            const dy = bounds[1][1] - bounds[0][1];
+            const x = (bounds[0][0] + bounds[1][0]) / 2;
+            const y = (bounds[0][1] + bounds[1][1]) / 2;
+            const scale = Math.min(10, 0.9 / Math.max(dx / width, dy / height));
+            const translate = [width / 2 - scale * x, height / 2 - scale * y];
+
+            // Create the transform that will be applied
+            const transform = d3.zoomIdentity
+                .translate(translate[0], translate[1])
+                .scale(scale);
+
+            // Update currentTransform immediately
+            currentTransform = transform;
+
+            // Calculate the marker sizes based on new scale
+            const clampedK = Math.max(1/3, Math.min(8, scale));
+            const newRadius = 10 / clampedK;
+            const newFontSize = 14 / clampedK;
+
+            // Apply all transformations in parallel
+            svg.transition()
+                .duration(1000)
+                .ease(d3.easeQuadInOut)
+                .call(zoom.transform, transform);
+
+            g.selectAll("circle.tournament-marker")
+                .transition()
+                .duration(1000)
+                .ease(d3.easeQuadInOut)
+                .attr("r", newRadius);
+
+            g.selectAll("text.tournament-marker-text")
+                .transition()
+                .duration(1000)
+                .ease(d3.easeQuadInOut)
+                .attr("font-size", newFontSize);
+        }
+
+        // Function to zoom to a marker
+        function zoomToMarker(d) {
+            const coords = projection([d.coords[0], d.coords[1]]);
+            const scale = Math.min(9, 6);
+            const translate = [width / 2 - scale * coords[0], height / 2 - scale * coords[1]];
+
+            const transform = d3.zoomIdentity
+                        .translate(translate[0], translate[1])
+                .scale(scale);
+
+            currentTransform = transform;
+
+            const clampedK = Math.max(1/3, Math.min(8, scale));
+            const newRadius = 10 / clampedK;
+            const newFontSize = 14 / clampedK;
+
+            svg.transition()
+                .duration(1000)
+                .ease(d3.easeQuadInOut)
+                .call(zoom.transform, transform);
+
+            g.selectAll("circle.tournament-marker")
+                .transition()
+                .duration(1000)
+                .ease(d3.easeQuadInOut)
+                .attr("r", newRadius);
+
+            g.selectAll("text.tournament-marker-text")
+                .transition()
+                .duration(1000)
+                .ease(d3.easeQuadInOut)
+                .attr("font-size", newFontSize);
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}.`;
+        }
+
+        function displayTournamentInfo(tournaments, year) {
+            const infoDiv = d3.select("#info");
+            
+            // Keep or add year title
+            let yearTitle = infoDiv.select(".year-title");
+            if (yearTitle.empty()) {
+                yearTitle = infoDiv.append("div")
+                    .attr("class", "year-title")
+                    .style("opacity", 0)
+                    .text(year)
+                    .transition()
+                    .duration(500)
+                    .style("opacity", 1);
+            }
+
+            // Clear previous content with fade out (except year title)
+            infoDiv.selectAll("*:not(.year-title)")
+                .transition()
+                .duration(300)
+                .style("opacity", 0)
+                .remove();
+
+            // Create container for tournament info
+            const container = infoDiv.append("div")
+                .attr("class", "tournament-info-container")
+                .style("padding", "20px")
+                .style("opacity", 0)
+                .style("height", "calc(100% - 60px)")  // Leave space for year title
+                .style("position", "relative")
+                .style("overflow", "hidden");  // Change from auto to hidden
+
+            // Add navigation buttons if there are multiple tournaments
+            if (tournaments.length > 1) {
+                // Add up button (initially hidden)
+                const upButton = container.append("button")
+                    .attr("class", "chart-button up hidden")
+                    .style("position", "absolute")
+                    .style("right", "10px")
+                    .style("top", "0")
+                    .style("z-index", "10")
+                    .on("click", () => switchTournament("up"));
+                upButton.append("i");
+
+                // Add down button
+                const downButton = container.append("button")
+                    .attr("class", "chart-button down")
+                    .style("position", "absolute")
+                    .style("right", "10px")
+                    .style("bottom", "40px")
+                    .style("z-index", "10")
+                    .on("click", () => switchTournament("down"));
+                downButton.append("i");
+            }
+
+            // Create sections container with fixed height
+            const sectionsContainer = container.append("div")
+                .style("position", "relative")
+                .style("height", "100%")
+                .style("overflow", "hidden");
+
+            // Create tournament sections
+            tournaments.forEach((tournament, index) => {
+                const section = sectionsContainer.append("div")
+                    .attr("class", `tournament-section ${index === 0 ? "active" : "below"}`)
+                    .style("position", "absolute")
+                    .style("width", "85%")
+                    .style("height", "100%")
+                    .style("transition", "transform 0.5s ease-in-out")
+                    .style("padding-right", "40px")  // Space for buttons
+                    .style("overflow", "hidden");  // Prevent section scrolling
+
+                // Add inner container for content with fixed height
+                const innerContainer = section.append("div")
+                    .style("height", "100%")
+                    .style("position", "relative");
+
+                // Color mapping for series
+                const seriesColors = {
+                    "Grand Slam": "#FFD700",
+                    "ATP Finals": "#C0C0C0",
+                    "ATP Masters 1000": "#00008B",
+                    "ATP Tour 500": "#006400",
+                    "ATP Tour 250": "#FC3D3D"
+                };
+
+                // Tournament name
+                innerContainer.append("h2")
+                    .style("font-size", "20px")
+                    .style("margin", "10px 0")
+                    .text(tournament.Tournament);
+
+                // Rest of the tournament info...
+                // [Previous tournament info code remains the same]
+                // Location
+                innerContainer.append("p")
+                    .style("margin", "5px 0")
+                    .html(`<strong>Location:</strong> ${tournament.City}, ${tournament.Country}`);
+
+                // Date range
+                const tournamentMatches = tournament.matches.sort((a, b) => new Date(a.Date) - new Date(b.Date));
+                const startDate = formatDate(tournamentMatches[0].Date);
+                const endDate = formatDate(tournamentMatches[tournamentMatches.length - 1].Date);
+                innerContainer.append("p")
+                    .style("margin", "5px 0")
+                    .html(`<strong>Date:</strong> ${startDate} - ${endDate}`);
+
+                // Series with colored marker
+                const seriesDiv = innerContainer.append("div")
+                    .style("margin", "5px 0")
+                    .style("display", "flex")
+                    .style("align-items", "center");
+
+                seriesDiv.append("div")
+                    .style("width", "12px")
+                    .style("height", "12px")
+                    .style("border-radius", "50%")
+                    .style("background-color", seriesColors[tournament.Series])
+                    .style("margin-right", "8px");
+
+                seriesDiv.append("span")
+                    .html(`<strong>Series:</strong> ${tournament.Series}`);
+
+                // Court and Surface
+                innerContainer.append("p")
+                    .style("margin", "5px 0")
+                    .html(`<strong>Court:</strong> ${tournament.Court}`);
+
+                innerContainer.append("p")
+                    .style("margin", "5px 0")
+                    .html(`<strong>Surface:</strong> ${tournament.Surface}`);
+
+                // Tournament winner
+                const final = tournamentMatches.find(m => m.Round === "The Final");
+                if (final) {
+                    innerContainer.append("div")
+                        .style("margin", "15px 0")
+                        .html("<strong>Tournament Winner:</strong>");
+
+                    const winnerDiv = innerContainer.append("div")
+                        .style("margin", "5px 30px 0 0")
+                        .style("display", "grid")
+                        .style("grid-template-columns", "auto 1fr auto")
+                        .style("gap", "10px")
+                        .style("align-items", "center");
+
+                    // Determine winner and loser details
+                    const isWinnerPlayer1 = final.Winner === final.Player_1;
+                    const winnerRank = isWinnerPlayer1 ? final.Rank_1 : final.Rank_2;
+                    const loserRank = isWinnerPlayer1 ? final.Rank_2 : final.Rank_1;
+                    const loserName = isWinnerPlayer1 ? final.Player_2 : final.Player_1;
+
+                    // Format score
+                    const scores = final.Score.split(' ');
+                    const formattedScores = scores.map(score => {
+                        const [p1Score, p2Score] = score.split('-').map(s => s || '0');
+                        return isWinnerPlayer1 ? [p1Score, p2Score] : [p2Score, p1Score];
+                    });
+
+                    winnerDiv.append("div")
+                        .html(`Rank ${winnerRank}`);
+                    
+                    winnerDiv.append("div")
+                        .style("font-weight", "bold")
+                        .text(final.Winner);
+
+                    winnerDiv.append("div")
+                        .text(formattedScores.map(s => s[0]).join(' '));
+
+                    winnerDiv.append("div")
+                        .html(`Rank ${loserRank}`);
+                        
+                    winnerDiv.append("div")
+                        .text(loserName);
+
+                    winnerDiv.append("div")
+                        .text(formattedScores.map(s => s[1]).join(' '));
+                }
+
+                // Biggest upset
+                const upsets = tournamentMatches.map(match => {
+                    const isWinnerPlayer1 = match.Winner === match.Player_1;
+                    const winnerRank = +(isWinnerPlayer1 ? match.Rank_1 : match.Rank_2);
+                    const loserRank = +(isWinnerPlayer1 ? match.Rank_2 : match.Rank_1);
+                    
+                    if (winnerRank > loserRank) {
+                        return {
+                            match,
+                            rankDiff: winnerRank - loserRank,
+                            isWinnerPlayer1
+                        };
+                    }
+                    return null;
+                }).filter(u => u !== null)
+                  .sort((a, b) => b.rankDiff - a.rankDiff);
+
+                if (upsets.length > 0) {
+                    const biggestUpset = upsets[0];
+                    const match = biggestUpset.match;
+                    
+                    innerContainer.append("div")
+                        .style("margin", "15px 0")
+                        .html(`<strong>Biggest Upset (${match.Round}):</strong>`);
+
+                    const upsetDiv = innerContainer.append("div")
+                        .style("margin", "5px 30px 0 0")
+                        .style("display", "grid")
+                        .style("grid-template-columns", "auto 1fr auto")
+                        .style("gap", "10px")
+                        .style("align-items", "center");
+
+                    // Format score for upset match
+                    const scores = match.Score.split(' ');
+                    const formattedScores = scores.map(score => {
+                        const [p1Score, p2Score] = score.split('-').map(s => s || '0');
+                        return biggestUpset.isWinnerPlayer1 ? [p1Score, p2Score] : [p2Score, p1Score];
+                    });
+
+                    const isWinnerPlayer1 = biggestUpset.isWinnerPlayer1;
+                    const winnerRank = isWinnerPlayer1 ? match.Rank_1 : match.Rank_2;
+                    const loserRank = isWinnerPlayer1 ? match.Rank_2 : match.Rank_1;
+                    const loserName = isWinnerPlayer1 ? match.Player_2 : match.Player_1;
+
+                    upsetDiv.append("div")
+                        .html(`Rank ${winnerRank}`);
+                    
+                    upsetDiv.append("div")
+                        .style("font-weight", "bold")
+                        .text(match.Winner);
+
+                    upsetDiv.append("div")
+                        .text(formattedScores.map(s => s[0]).join(' '));
+
+                    upsetDiv.append("div")
+                        .html(`Rank ${loserRank}`);
+                        
+                    upsetDiv.append("div")
+                        .text(loserName);
+
+                    upsetDiv.append("div")
+                        .text(formattedScores.map(s => s[1]).join(' '));
+                }
+            });
+
+            // Function to switch between tournaments
+            function switchTournament(direction) {
+                const sections = sectionsContainer.selectAll(".tournament-section");
+                const upButton = container.select(".chart-button.up");
+                const downButton = container.select(".chart-button.down");
+                
+                let activeIndex = 0;
+                sections.each(function(d, i) {
+                    if (d3.select(this).classed("active")) {
+                        activeIndex = i;
+                    }
+                });
+
+                const totalSections = tournaments.length;
+                let newIndex;
+
+                if (direction === "up") {
+                    newIndex = activeIndex - 1;
+                } else {
+                    newIndex = activeIndex + 1;
+                }
+
+                if (newIndex >= 0 && newIndex < totalSections) {
+                    sections.each(function(d, i) {
+                        const section = d3.select(this);
+                        if (i < newIndex) section.classed("above", true).classed("active below", false);
+                        else if (i === newIndex) section.classed("active", true).classed("above below", false);
+                        else section.classed("below", true).classed("active above", false);
+                    });
+
+                    // Update button visibility
+                    upButton.classed("hidden", newIndex === 0);
+                    downButton.classed("hidden", newIndex === totalSections - 1);
+                }
+            }
+
+            // Fade in the container
+            container.transition()
+                .duration(500)
+                .style("opacity", 1);
+        }
+
+        // Function to update tournament markers based on selected year
+        function updateTournamentMarkers(selectedYear, tournaments) {
+            // Filter tournaments by year
+            const filteredTournaments = tournaments.filter(d => new Date(d.Date).getFullYear() === selectedYear);
+
+            // Group matches by tournament
+            const tournamentMatches = d3.group(filteredTournaments, d => d.Tournament);
+
+            // Normalize coordinates to 4 decimal places to handle minor variations
+            const normalizeCoords = coords => [
+                Math.round(coords[0] * 10000) / 10000,
+                Math.round(coords[1] * 10000) / 10000
+            ];
+
+            // Aggregate tournaments by city and normalized coordinates
+            const cityCounts = d3.rollup(
+                filteredTournaments,
+                v => {
+                    const uniqueTournaments = Array.from(new Set(v.map(t => t.Tournament.trim())))
+                        .map(tournament => {
+                            const tournamentData = v.find(d => d.Tournament === tournament);
+                            return {
+                                Tournament: tournament,
+                                City: tournamentData.City.trim(),
+                                Country: tournamentData.Country,
+                                Series: tournamentData.Series,
+                                Surface: tournamentData.Surface,
+                                Court: tournamentData.Court,
+                                Coordinates: tournamentData.Coordinates,
+                                matches: Array.from(tournamentMatches.get(tournament))
+                            };
+                        });
+                    const coords = JSON.parse(v[0].Coordinates.replace(/'/g, '"'));
+                    return {
+                        count: uniqueTournaments.length,
+                        tournaments: uniqueTournaments,
+                        coords: normalizeCoords(coords),
+                        city: v[0].City.trim()
+                    };
+                },
+                d => {
+                    const coords = JSON.parse(d.Coordinates.replace(/'/g, '"'));
+                    return `${d.City.trim()}_${normalizeCoords(coords).join(',')}`;
+                }
+            );
+
+            // Convert to array for D3 binding
+            const cityData = Array.from(cityCounts, ([key, data]) => ({
+                city: data.city,
+                count: data.count,
+                tournaments: data.tournaments,
+                coords: data.coords
+            }));
+
+            // Color mapping for series
+            const seriesColors = {
+                "Grand Slam": "#FFD700",
+                "ATP Finals": "#C0C0C0",
+                "ATP Masters 1000": "#00008B",
+                "ATP Tour 500": "#006400",
+                "ATP Tour 250": "#FC3D3D"
+            };
+
+            // Darker shades for hover
+            const hoverColors = {
+                "Grand Slam": "#DAA520",
+                "ATP Finals": "#8F8F8F",
+                "ATP Masters 1000": "#000066",
+                "ATP Tour 500": "#004d00",
+                "ATP Tour 250": "#C22F2F"
+            };
+
+            // Update marker groups (circle + optional text)
+            const markerGroups = g.selectAll("g.tournament-marker-group")
+                .data(cityData, d => `${d.city}_${d.coords.join(',')}`);
+
+            const markerEnter = markerGroups.enter()
+                .append("g")
+                .attr("class", "tournament-marker-group");
+
+            // Append circles with enter animation
+            markerEnter.append("circle")
+                .attr("class", "tournament-marker")
+                .attr("cx", d => projection([d.coords[0], d.coords[1]])[0])
+                .attr("cy", d => projection([d.coords[0], d.coords[1]])[1])
+                .attr("r", 0)
+                .attr("fill", d => d.count >= 2 ? "#000000" : seriesColors[d.tournaments[0].Series] || "#B9B28A")
+                .on("click", (event, d) => {
+                    event.stopPropagation();
+                    zoomToMarker(d);
+                    displayTournamentInfo(d.tournaments, selectedYear);
+                })
+                .on("mouseover", function(event, d) {
+                    d3.select(this)
+                        .transition()
+                        .duration(200)
+                        .ease(d3.easeQuadInOut)
+                        .attr("r", 13 / Math.max(1/3, Math.min(8, currentTransform.k)))
+                        .attr("fill", d.count >= 2 ? "#333333" : hoverColors[d.tournaments[0].Series] || "#d5cf9e");
+                    
+                    if (d.count >= 2) {
+                        d3.select(this.parentNode).select("text.tournament-marker-text")
+                            .transition()
+                            .duration(200)
+                            .ease(d3.easeQuadInOut)
+                            .attr("font-size", 17 / Math.max(1/3, Math.min(8, currentTransform.k)));
+                    }
+
+                    // Show tooltip with tournament information
+                    const tooltipContent = d.count >= 2 
+                        ? `<strong>${d.city}</strong><br>${Array.from(new Set(d.tournaments.map(t => t.Tournament))).join('<br>')}`
+                        : `<strong>${d.city}</strong><br>${d.tournaments[0].Tournament}`;
+
+                    tooltip.transition()
+                        .duration(200)
+                        .style("opacity", 1);
+                    tooltip.html(tooltipContent)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mousemove", function(event) {
+                    tooltip.style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", function(event, d) {
+                    d3.select(this)
+                        .transition()
+                        .duration(200)
+                        .ease(d3.easeQuadInOut)
+                        .attr("r", 10 / Math.max(1/3, Math.min(8, currentTransform.k)))
+                        .attr("fill", d.count >= 2 ? "#000000" : seriesColors[d.tournaments[0].Series] || "#B9B28A");
+                    
+                    if (d.count >= 2) {
+                        d3.select(this.parentNode).select("text.tournament-marker-text")
+                            .transition()
+                            .duration(200)
+                            .ease(d3.easeQuadInOut)
+                            .attr("font-size", 14 / Math.max(1/3, Math.min(8, currentTransform.k)));
+                    }
+
+                    tooltip.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                })
+                .transition()
+                .duration(500)
+                .ease(d3.easeQuadInOut)
+                .attr("r", 10 / Math.max(1/3, Math.min(8, currentTransform.k)));
+
+            // Append text for new markers with 2+ tournaments
+            markerEnter.filter(d => d.count >= 2)
+                .append("text")
+                .attr("class", "tournament-marker-text")
+                .attr("x", d => projection([d.coords[0], d.coords[1]])[0])
+                .attr("y", d => projection([d.coords[0], d.coords[1]])[1])
+                .attr("dy", "0.3em")
+                .text(d => d.count)
+                .attr("font-size", 0)
+                .style("cursor", "pointer")
+                .on("click", (event, d) => {
+                    event.stopPropagation();
+                    zoomToMarker(d);
+                    displayTournamentInfo(d.tournaments, selectedYear);
+                })
+                .transition()
+                .duration(500)
+                .ease(d3.easeQuadInOut)
+                .attr("font-size", 14 / Math.max(1/3, Math.min(8, currentTransform.k)));
+
+            // Update existing markers
+            markerGroups.select("circle.tournament-marker")
+                .transition()
+                .duration(500)
+                .ease(d3.easeQuadInOut)
+                .attr("cx", d => projection([d.coords[0], d.coords[1]])[0])
+                .attr("cy", d => projection([d.coords[0], d.coords[1]])[1])
+                .attr("r", 10 / Math.max(1/3, Math.min(8, currentTransform.k)))
+                .attr("fill", d => d.count >= 2 ? "#000000" : seriesColors[d.tournaments[0].Series] || "#B9B28A");
+
+            // Handle text for existing markers
+            markerGroups.each(function(d) {
+                const group = d3.select(this);
+                const hasText = !group.select("text.tournament-marker-text").empty();
+                
+                if (d.count >= 2) {
+                    // Create or update text for count >= 2
+                    let text = group.select("text.tournament-marker-text");
+                    if (text.empty()) {
+                        text = group.append("text")
+                            .attr("class", "tournament-marker-text")
+                            .attr("x", projection([d.coords[0], d.coords[1]])[0])
+                            .attr("y", projection([d.coords[0], d.coords[1]])[1])
+                            .attr("dy", "0.3em")
+                            .attr("font-size", 0)
+                            .text(d.count);
+                    }
+                    text.transition()
+                        .duration(500)
+                        .ease(d3.easeQuadInOut)
+                        .attr("x", projection([d.coords[0], d.coords[1]])[0])
+                        .attr("y", projection([d.coords[0], d.coords[1]])[1])
+                        .attr("font-size", 14 / Math.max(1/3, Math.min(8, currentTransform.k)))
+                        .text(d.count);
+                } else {
+                    // Remove text for count < 2
+                    group.select("text.tournament-marker-text")
+                        .transition()
+                        .duration(500)
+                        .ease(d3.easeQuadInOut)
+                        .attr("font-size", 0)
+                        .remove();
+                }
+            });
+
+            // Add click handler to existing text elements
+            markerGroups.selectAll("text.tournament-marker-text")
+                .style("cursor", "pointer")
+                .on("click", (event, d) => {
+                    event.stopPropagation();
+                    zoomToMarker(d);
+                    displayTournamentInfo(d.tournaments, selectedYear);
+            });
+
+            // Exit transitions
+            markerGroups.exit()
+                .select("circle.tournament-marker")
+                .transition()
+                .duration(500)
+                .ease(d3.easeQuadInOut)
+                .attr("r", 0)
+                .remove();
+
+            markerGroups.exit()
+                .select("text.tournament-marker-text")
+                .transition()
+                .duration(500)
+                .ease(d3.easeQuadInOut)
+                .attr("font-size", 0)
+                .remove();
+
+            markerGroups.exit()
+                .transition()
+                .duration(500)
+                .remove();
+
+            // Update click handlers
+            svg.on("click", function(event) {
+                if (event.target.tagName === "svg") {
+                    // Clicked on map background, show year info
+                    updateInfoSection(selectedYear);
+                }
+            });
+        }
+
+        // Load world map and tournament data
+        Promise.all([
+            d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json"),
+            atp_tennis_fixed
+        ]).then(function([world, tournaments]) {
+            // Create tooltip div if it doesn't exist
+            const tooltip = d3.select("body").selectAll(".tooltip").data([0])
+                .join("div")
+                .attr("class", "tooltip");
+
+            // Draw the map
+            g.selectAll("path")
+                .data(topojson.feature(world, world.objects.countries).features)
+                .enter()
+                .append("path")
+                .attr("class", "country")
+                .attr("d", path)
+                .on("mouseover", function(event, d) {
+                    d3.select(this)
+                        .transition()
+                        .duration(200)
+                        .style("fill", "#d5cf9e");
+                    
+                    tooltip.transition()
+                        .duration(200)
+                        .style("opacity", 1);
+                    tooltip.html(d.properties.name)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mousemove", function(event) {
+                    tooltip.style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this)
+                        .transition()
+                        .duration(200)
+                        .style("fill", "#EBE5C2");
+                    
+                    tooltip.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                })
+                .on("click", (event, d) => {
+                    event.stopPropagation();
+                    zoomToCountry(d, path);
+                });
+
+            // Initial rendering of tournament markers for 2009
+            updateTournamentMarkers(2009, tournaments);
+
+            // Store tournaments globally for timeline updates
+            window.tournamentsData = tournaments;
+
+            // Initialize info section with default year
+            updateInfoSection(2009);
+        });
+
+        function updateVisualization(selectedYear) {
+            // Update year labels
+            d3.selectAll(".year-label")
+                .classed("active", d => d === selectedYear);
+
+            // Update tournament markers
+            updateTournamentMarkers(selectedYear, window.tournamentsData);
+
+            // Update info section
+            updateInfoSection(selectedYear);
+        }
+    </script>
+
+    <script>
+        const timelineContainer = d3.select("#timeline-container");
+        const timelineWidth = 85;
+        const timelineHeight = window.innerHeight - 77;
+
+        const svgTimeline = timelineContainer.append("svg")
+            .attr("id", "timeline-svg")
+            .attr("width", timelineWidth)
+            .attr("height", timelineHeight)
+            .style("display", "block");
+
+        const allYears = d3.range(2009, 2026);
+        let selectedYear = 2009;
+        const visibleCount = 9;
+        const circleSpacing = 50;
+        const transitionDuration = 350;
+        let previousVisibleYears = allYears.slice(0, visibleCount);
+
+        function renderTimelineSVG(centerYear) {
+            const centerIndex = allYears.indexOf(centerYear);
+            const half = Math.floor(visibleCount / 2);
+            let startIdx = Math.max(0, centerIndex - half);
+            let endIdx = Math.min(allYears.length, startIdx + visibleCount);
+
+            if (endIdx - startIdx < visibleCount) {
+                startIdx = Math.max(0, endIdx - visibleCount);
+            }
+
+            const visibleYears = allYears.slice(startIdx, endIdx);
+
+            // Calculate shift direction and magnitude
+            const previousCenterIndex = allYears.indexOf(previousVisibleYears[Math.floor(visibleCount / 2)]);
+            const shiftDelta = centerIndex - previousCenterIndex;
+            const shiftDirection = shiftDelta > 0 ? 1 : -1;
+
+            const centerY = timelineHeight / 2;
+            const timelineGroup = svgTimeline.selectAll("g.timeline-group")
+                .data([null])
+                .join(
+                    enter => enter.append("g")
+                        .attr("class", "timeline-group")
+                        .attr("transform", `translate(75, ${centerY - (visibleYears.length - 1) * circleSpacing / 2})`),
+                    update => update
+                        .transition()
+                        .duration(transitionDuration)
+                        .ease(d3.easeCubicInOut)
+                        .attr("transform", `translate(75, ${centerY - (visibleYears.length - 1) * circleSpacing / 2})`)
+                );
+
+            // Create defs for fade gradients
+            if (svgTimeline.select("defs").empty()) {
+                const defs = svgTimeline.append("defs");
+
+                const topFadeGradient = defs.append("linearGradient")
+                    .attr("id", "topFadeOverlay")
+                    .attr("x1", "0%")
+                    .attr("y1", "0%")
+                    .attr("x2", "0%")
+                    .attr("y2", "100%");
+
+                topFadeGradient.append("stop")
+                    .attr("offset", "0%")
+                    .attr("stop-color", "#C2DFFF")
+                    .attr("stop-opacity", 1);
+
+                topFadeGradient.append("stop")
+                    .attr("offset", "100%")
+                    .attr("stop-color", "#C2DFFF")
+                    .attr("stop-opacity", 0);
+
+                const bottomFadeGradient = defs.append("linearGradient")
+                    .attr("id", "bottomFadeOverlay")
+                    .attr("x1", "0%")
+                    .attr("y1", "0%")
+                    .attr("x2", "0%")
+                    .attr("y2", "100%");
+
+                bottomFadeGradient.append("stop")
+                    .attr("offset", "0%")
+                    .attr("stop-color", "#C2DFFF")
+                    .attr("stop-opacity", 0);
+
+                bottomFadeGradient.append("stop")
+                    .attr("offset", "100%")
+                    .attr("stop-color", "#C2DFFF")
+                    .attr("stop-opacity", 1);
+            }
+
+            // Update line with transition
+            timelineGroup.selectAll("line")
+                .data([null])
+                .join(
+                    enter => enter.append("line")
+                        .attr("x1", 0)
+                        .attr("x2", 0)
+                        .attr("y1", visibleYears[0] === 2009 ? 0 : -circleSpacing)
+                        .attr("y2", visibleYears[8] === 2025 ? (visibleYears.length - 1) * circleSpacing : visibleYears.length * circleSpacing)
+                        .attr("stroke", "#504B38")
+                        .attr("stroke-width", 4),
+                    update => update
+                        .transition()
+                        .duration(transitionDuration)
+                        .ease(d3.easeCubicInOut)
+                        .attr("y1", visibleYears[0] === 2009 ? 0 : -circleSpacing)
+                        .attr("y2", visibleYears[8] === 2025 ? (visibleYears.length - 1) * circleSpacing : visibleYears.length * circleSpacing)
+                );
+
+            // Update circles with transition
+            const circles = timelineGroup.selectAll("circle")
+                .data(visibleYears, d => d);
+
+            circles.join(
+                enter => enter.append("circle")
+                    .attr("cx", 0)
+                    .attr("cy", (d, i) => {
+                        const finalY = i * circleSpacing;
+                        const offset = shiftDirection * circleSpacing * Math.max(1, Math.abs(shiftDelta));
+                        return finalY + offset;
+                    })
+                    .attr("r", 0)
+                    .attr("fill", d => d === selectedYear ? "#B9B28A" : "#504B38")
+                    .attr("class", "timeline-circle")
+                    .on("click", (event, d) => {
+                        selectedYear = d;
+                        renderTimelineSVG(d);
+                        updateVisualization(d);
+                    })
+                    .transition()
+                    .duration(transitionDuration)
+                    .ease(d3.easeCubicInOut)
+                    .attr("cy", (d, i) => i * circleSpacing)
+                    .attr("r", d => d === selectedYear ? 10 : 8)
+                    .attr("fill", d => d === selectedYear ? "#B9B28A" : "#504B38"),
+                update => update
+                    .transition()
+                    .duration(transitionDuration)
+                    .ease(d3.easeCubicInOut)
+                    .attr("cy", (d, i) => i * circleSpacing)
+                    .attr("r", d => d === selectedYear ? 10 : 8)
+                    .attr("fill", d => d === selectedYear ? "#B9B28A" : "#504B38"),
+                exit => exit
+                    .transition()
+                    .duration(350)
+                    .ease(d3.easeQuadInOut)
+                    .attr("cy", (d, i) => {
+                        const finalY = i * circleSpacing;
+                        const offset = -shiftDirection * circleSpacing * Math.max(1, Math.abs(shiftDelta));
+                        return finalY + offset;
+                    })
+                    .attr("r", 0)
+                    .remove()
+            );
+
+            // Update text labels with smooth transition
+            const texts = timelineGroup.selectAll("text")
+                .data(visibleYears, d => d);
+
+            texts.join(
+                enter => enter.append("text")
+                    .attr("x", -15)
+                    .attr("y", (d, i) => {
+                        const finalY = i * circleSpacing + 6.5;
+                        const offset = shiftDirection * circleSpacing * Math.max(1, Math.abs(shiftDelta));
+                        return finalY + offset;
+                    })
+                    .attr("opacity", 0)
+                    .attr("fill", d => d === selectedYear ? "#B9B28A" : "#504B38")
+                    .style("font-size", d => d === selectedYear ? "22px" : "19px")
+                    .attr("class", d => d === selectedYear ? "year-label active" : "year-label")
+                    .text(d => d)
+                    .on("click", (event, d) => {
+                        selectedYear = d;
+                        renderTimelineSVG(d);
+                        updateVisualization(d);
+                    })
+                    .transition()
+                    .duration(transitionDuration)
+                    .ease(d3.easeCubicInOut)
+                    .attr("y", (d, i) => i * circleSpacing + 6.5)
+                    .attr("opacity", 1)
+                    .attr("fill", d => d === selectedYear ? "#B9B28A" : "#504B38")
+                    .style("font-size", d => d === selectedYear ? "22px" : "19px"),
+                update => update
+                    .transition()
+                    .duration(transitionDuration)
+                    .ease(d3.easeCubicInOut)
+                    .attr("y", (d, i) => i * circleSpacing + 6.5)
+                    .attr("fill", d => d === selectedYear ? "#B9B28A" : "#504B38")
+                    .style("font-size", d => d === selectedYear ? "22px" : "19px")
+                    .attr("class", d => d === selectedYear ? "year-label active" : "year-label")
+                    .attr("opacity", 1),
+                exit => exit
+                    .transition()
+                    .duration(transitionDuration)
+                    .ease(d3.easeCubicInOut)
+                    .attr("y", (d, i) => {
+                        const finalY = i * circleSpacing + 6.5;
+                        const offset = -shiftDirection * circleSpacing * Math.max(1, Math.abs(shiftDelta));
+                        return finalY + offset;
+                    })
+                    .attr("opacity", 0)
+                    .remove()
+            );
+
+            // Update fade overlay rectangles
+            const fadeHeight = (visibleCount - 1) * circleSpacing * 0.12;
+
+            timelineGroup.selectAll("rect.top-fade")
+                .data([null])
+                .join(
+                    enter => enter.append("rect")
+                        .attr("class", "top-fade")
+                        .attr("x", -100)
+                        .attr("y", -circleSpacing - 1)
+                        .attr("width", 150)
+                        .attr("height", fadeHeight)
+                        .attr("fill", visibleYears[0] === 2009 ? "none" : "url(#topFadeOverlay)")
+                        .attr("pointer-events", "none"),
+                    update => update
+                        .transition()
+                        .duration(transitionDuration)
+                        .ease(d3.easeCubicInOut)
+                        .attr("fill", "url(#topFadeOverlay)")
+                );
+
+            timelineGroup.selectAll("rect.bottom-fade")
+                .data([null])
+                .join(
+                    enter => enter.append("rect")
+                        .attr("class", "bottom-fade")
+                        .attr("x", -100)
+                        .attr("y", visibleCount * circleSpacing - fadeHeight)
+                        .attr("width", 150)
+                        .attr("height", fadeHeight)
+                        .attr("fill", visibleYears[8] === 2025 ? "none" : "url(#bottomFadeOverlay)")
+                        .attr("pointer-events", "none"),
+                    update => update
+                        .transition()
+                        .duration(transitionDuration)
+                        .ease(d3.easeCubicInOut)
+                        .attr("fill", "url(#bottomFadeOverlay)")
+                );
+
+            // Update previousVisibleYears
+            previousVisibleYears = visibleYears;
+        }
+
+        renderTimelineSVG(selectedYear);
+    </script>
+</body>
+</html>
